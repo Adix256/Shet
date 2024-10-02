@@ -17,6 +17,7 @@ rustc "$last_edited_rust_file" -o "$filename"
 if [[ $? -eq 0 ]]; then
   echo "Compilation successful! Output: $filename"
 # Run the compiled program
+echo 
 ./"$filename"
 
 else
