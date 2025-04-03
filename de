@@ -1,6 +1,0 @@
-#!/bin/bash
-
-# Find and delete all Rust binaries (files not ending with .rs) in the home directory
-find ~ -type f -executable ! -name "*.rs" -exec rm -f {} +
-
-echo "Deleted all Rust binaries from home directory."
