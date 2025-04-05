@@ -1,0 +1,38 @@
+#!/bin/bash
+
+# Find the most recent build.ninja file
+find_build_dir() {
+    find ~ -type f -name build.ninja -printf "%T@ %h\n" 2>/dev/null | 
+    sort -nr | 
+    head -1 | 
+    cut -d' ' -f2
+}
+
+BUILD_DIR=$(find_build_dir)
+
+if [ -z "$BUILD_DIR" ]; then
+    echo "Error: No build.ninja files found" >&2
+    exit 1
+fi
+
+echo "Found build directory: $BUILD_DIR"
+
+# Run ninja in the build directory
+if (cd "$BUILD_DIR" && ninja); then
+    # Find the most recently modified executable
+    EXECUTABLE=$(find "$BUILD_DIR" -type f -executable -not -name "*.so" -printf "%T@ %p\n" 2>/dev/null |
+        sort -nr |
+        head -1 |
+        cut -d' ' -f2)
+    
+    if [ -n "$EXECUTABLE" ]; then
+        echo "Running: $EXECUTABLE"
+        "$EXECUTABLE"
+    else
+        echo "Error: No executable found in $BUILD_DIR" >&2
+        exit 1
+    fi
+else
+    echo "Build failed" >&2
+    exit 1
+fi
