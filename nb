@@ -1,77 +1,16 @@
 #!/bin/bash
-set -euo pipefail
+# One-shot build and run script for C projects
 
-# Cache frequently used paths
-BUILD_CACHE_DIR="$HOME/.build_cache"
-mkdir -p "$BUILD_CACHE_DIR"
+# Configuration
+BUILD_DIR="build"
+TARGET_NAME="my_project"  # Change this to match your CMake project name
 
-# Find the most recent build.ninja file efficiently
-find_build_dir() {
-    # Check cache first
-    local cached_dir
-    if [[ -f "$BUILD_CACHE_DIR/last_build_dir" ]]; then
-        cached_dir=$(<"$BUILD_CACHE_DIR/last_build_dir")
-        if [[ -f "$cached_dir/build.ninja" ]]; then
-            echo "$cached_dir"
-            return 0
-        fi
-    fi
+# Create build directory if needed
+mkdir -p "$BUILD_DIR"
 
-    # Search in likely directories first (ordered by probability)
-    local likely_dirs=(
-        "$PWD"                         # Current directory
-        "$PWD/.."                      # Parent directory
-        "$PWD/../build"                # Common build location
-        "$HOME/projects"               # Common projects dir
-        "$HOME/src"                    # Common source dir
-        "$HOME/workspace"              # Common workspace dir
-        "$HOME"                        # Fallback to home
-    )
+# Build process
+cd "$BUILD_DIR" || exit 1
+cmake -G Ninja .. && ninja
 
-    for dir in "${likely_dirs[@]}"; do
-        if [[ -f "$dir/build.ninja" ]]; then
-            echo "$dir" > "$BUILD_CACHE_DIR/last_build_dir"
-            echo "$dir"
-            return 0
-        fi
-    done
-
-    # Full search only if not found in likely locations
-    local found_dir
-    found_dir=$(find "$HOME" -name build.ninja -printf '%h\n' -quit 2>/dev/null)
-    if [[ -n "$found_dir" ]]; then
-        echo "$found_dir" > "$BUILD_CACHE_DIR/last_build_dir"
-        echo "$found_dir"
-        return 0
-    fi
-
-    return 1
-}
-
-# Main execution
-BUILD_DIR=$(find_build_dir) || {
-    echo "Error: No build.ninja files found" >&2
-    exit 1
-}
-
-echo "Found build directory: $BUILD_DIR"
-
-# Build with parallel jobs (adjust based on CPU cores)
-echo "Building project..."
-if ! (cd "$BUILD_DIR" && ninja -j$(nproc)); then
-    echo "Build failed" >&2
-    exit 1
-fi
-
-# Find executable efficiently (skip libs, hidden files, etc.)
-EXECUTABLE=$(find "$BUILD_DIR" -type f -executable \
-    ! -name "*.so" ! -name "*.dylib" ! -name "*.dll" \
-    ! -name ".*" -print -quit)
-
-if [[ -z "$EXECUTABLE" ]]; then
-    echo "Error: No executable found in $BUILD_DIR" >&2
-    exit 1
-fi
-
-echo "Running: $EXECUTABLE"
-exec "$EXECUTABLE"
+# Find and run the output binary (handles both executables and .so)
+find . -type f \( -name "$TARGET_NAME" -o -name "*.so" \) -exec {} \;
