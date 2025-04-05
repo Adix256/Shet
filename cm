@@ -1,49 +1,46 @@
 #!/bin/bash
 
-# Find all C source files and header files in the current directory
-SRC_FILES=$(find . -type f -name "*.c")
-HEADER_FILES=$(find . -type f -name "*.h")
+# Get absolute path to project root (parent of directory where script is run)
+PROJECT_ROOT=$(dirname "$(pwd)")
+PROJECT_NAME=$(basename "$PROJECT_ROOT")
+SRC_DIR="$(pwd)"
 
-# Combine all source and header files into one list
-ALL_FILES="${SRC_FILES} ${HEADER_FILES}"
-
-# Get the project name from the current directory
-PROJECT_NAME=$(basename "$PWD")
-
-# Create or update the CMakeLists.txt file
-CMAKE_FILE="CMakeLists.txt"
-
-# If CMakeLists.txt exists, we update it; otherwise, we create it
-if [ -f "$CMAKE_FILE" ]; then
-  echo "Updating existing CMakeLists.txt"
-  # Backup the old CMakeLists.txt
-  cp "$CMAKE_FILE" "${CMAKE_FILE}.bak"
-  
-  # Remove the previous 'add_executable' line to avoid duplicates
-  sed -i '/add_executable/d' "$CMAKE_FILE"
-else
-  echo "Creating new CMakeLists.txt"
-  # Start a fresh CMakeLists.txt file
-  echo "cmake_minimum_required(VERSION 3.10)" > "$CMAKE_FILE"
-  echo "project(${PROJECT_NAME})" >> "$CMAKE_FILE"
-  echo "set(CMAKE_C_STANDARD 11)" >> "$CMAKE_FILE"
+# Verify we're in a potential source directory
+if [ ! -f "$(basename "$SRC_DIR")"/*.{c,h} ]; then
+    echo "Warning: No .c/.h files found in current directory" >&2
 fi
 
-# Append the new 'add_executable' line
-echo "add_executable(${PROJECT_NAME} ${ALL_FILES})" >> "$CMAKE_FILE"
+# Create CMakeLists.txt in project root
+CMAKE_FILE="$PROJECT_ROOT/CMakeLists.txt"
 
-echo "CMakeLists.txt has been updated with the following files:"
-echo "$ALL_FILES"
+# Generate CMakeLists.txt with absolute paths
+cat > "$CMAKE_FILE" <<EOF
+cmake_minimum_required(VERSION 3.10)
+project($PROJECT_NAME)
 
-# Check if the 'build' directory exists; if not, create it
-if [ ! -d "build" ]; then
-  echo "No 'build/' directory found. Creating it..."
-  mkdir build
-else
-  echo "'build/' directory already exists."
-fi
+# Set source files using absolute paths
+file(GLOB SRCS 
+    "$SRC_DIR/*.c"
+    "$SRC_DIR/*.h"
+)
 
-# Run cmake with Ninja generator to create build files in the build directory
-cd build || exit
-cmake -G Ninja ..
-echo "Ninja build files have been generated in './build'. Now, run 'ninja' to build the project."
+# Handle case when no source files are found
+if(NOT SRCS)
+    message(FATAL_ERROR "No source files found in $SRC_DIR")
+endif()
+
+add_executable($PROJECT_NAME \${SRCS})
+
+# Help CMake find headers if needed
+target_include_directories($PROJECT_NAME PRIVATE "$SRC_DIR")
+EOF
+
+# Create build directory
+BUILD_DIR="$PROJECT_ROOT/build"
+mkdir -p "$BUILD_DIR"
+
+# Run CMake with explicit path to source
+cd "$BUILD_DIR" && cmake -G Ninja "$PROJECT_ROOT"
+
+echo "Build system generated in: $BUILD_DIR"
+echo "To build: cd '$BUILD_DIR' && ninja"
