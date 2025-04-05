@@ -1,38 +1,77 @@
 #!/bin/bash
+set -euo pipefail
 
-# Find the most recent build.ninja file
+# Cache frequently used paths
+BUILD_CACHE_DIR="$HOME/.build_cache"
+mkdir -p "$BUILD_CACHE_DIR"
+
+# Find the most recent build.ninja file efficiently
 find_build_dir() {
-    find ~ -type f -name build.ninja -printf "%T@ %h\n" 2>/dev/null | 
-    sort -nr | 
-    head -1 | 
-    cut -d' ' -f2
+    # Check cache first
+    local cached_dir
+    if [[ -f "$BUILD_CACHE_DIR/last_build_dir" ]]; then
+        cached_dir=$(<"$BUILD_CACHE_DIR/last_build_dir")
+        if [[ -f "$cached_dir/build.ninja" ]]; then
+            echo "$cached_dir"
+            return 0
+        fi
+    fi
+
+    # Search in likely directories first (ordered by probability)
+    local likely_dirs=(
+        "$PWD"                         # Current directory
+        "$PWD/.."                      # Parent directory
+        "$PWD/../build"                # Common build location
+        "$HOME/projects"               # Common projects dir
+        "$HOME/src"                    # Common source dir
+        "$HOME/workspace"              # Common workspace dir
+        "$HOME"                        # Fallback to home
+    )
+
+    for dir in "${likely_dirs[@]}"; do
+        if [[ -f "$dir/build.ninja" ]]; then
+            echo "$dir" > "$BUILD_CACHE_DIR/last_build_dir"
+            echo "$dir"
+            return 0
+        fi
+    done
+
+    # Full search only if not found in likely locations
+    local found_dir
+    found_dir=$(find "$HOME" -name build.ninja -printf '%h\n' -quit 2>/dev/null)
+    if [[ -n "$found_dir" ]]; then
+        echo "$found_dir" > "$BUILD_CACHE_DIR/last_build_dir"
+        echo "$found_dir"
+        return 0
+    fi
+
+    return 1
 }
 
-BUILD_DIR=$(find_build_dir)
-
-if [ -z "$BUILD_DIR" ]; then
+# Main execution
+BUILD_DIR=$(find_build_dir) || {
     echo "Error: No build.ninja files found" >&2
     exit 1
-fi
+}
 
 echo "Found build directory: $BUILD_DIR"
 
-# Run ninja in the build directory
-if (cd "$BUILD_DIR" && ninja); then
-    # Find the most recently modified executable
-    EXECUTABLE=$(find "$BUILD_DIR" -type f -executable -not -name "*.so" -printf "%T@ %p\n" 2>/dev/null |
-        sort -nr |
-        head -1 |
-        cut -d' ' -f2)
-    
-    if [ -n "$EXECUTABLE" ]; then
-        echo "Running: $EXECUTABLE"
-        "$EXECUTABLE"
-    else
-        echo "Error: No executable found in $BUILD_DIR" >&2
-        exit 1
-    fi
-else
+# Build with parallel jobs (adjust based on CPU cores)
+echo "Building project..."
+if ! (cd "$BUILD_DIR" && ninja -j$(nproc)); then
     echo "Build failed" >&2
     exit 1
 fi
+
+# Find executable efficiently (skip libs, hidden files, etc.)
+EXECUTABLE=$(find "$BUILD_DIR" -type f -executable \
+    ! -name "*.so" ! -name "*.dylib" ! -name "*.dll" \
+    ! -name ".*" -print -quit)
+
+if [[ -z "$EXECUTABLE" ]]; then
+    echo "Error: No executable found in $BUILD_DIR" >&2
+    exit 1
+fi
+
+echo "Running: $EXECUTABLE"
+exec "$EXECUTABLE"
