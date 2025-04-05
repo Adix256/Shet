@@ -1,4 +1,4 @@
-```#!/bin/bash
+#!/bin/bash
 
 # Find all C source files and header files in the current directory
 SRC_FILES=$(find . -type f -name "*.c")
@@ -46,4 +46,4 @@ fi
 # Run cmake with Ninja generator to create build files in the build directory
 cd build || exit
 cmake -G Ninja ..
-echo "Ninja build files have been generated in './build'. Now, run 'ninja' to build the project."```
+echo "Ninja build files have been generated in './build'. Now, run 'ninja' to build the project."
