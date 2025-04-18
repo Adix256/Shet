@@ -1,0 +1,94 @@
+-- Main configuration
+return {
+  {
+    "stevearc/conform.nvim",
+    event = 'BufWritePre', -- Enable format on save
+    opts = require "configs.conform",
+  },
+
+  {
+    "neovim/nvim-lspconfig",
+    config = function()
+      require("lspconfig").clangd.setup({
+        cmd = {
+          "clangd",
+          "--background-index",
+          "--clang-tidy",
+          "--header-insertion=never",
+          "--completion-style=detailed",
+          "--function-arg-placeholders",
+          "--fallback-style=llvm"
+        },
+        filetypes = { "c" },
+        cmd_env = {
+          PATH = "/data/data/com.termux/files/usr/bin:" .. os.getenv("PATH")
+        },
+      })
+      
+      require("lspconfig").zls.setup({
+        cmd = { vim.fn.expand("$(dirname $(which clangd))/zls") },
+        filetypes = { "zig" },
+      })
+      
+      require "configs.lspconfig"
+    end,
+  },
+
+  -- Integrated terminal controls
+  {
+    "folke/which-key.nvim",
+    event = "VeryLazy",
+    init = function()
+      -- Get Neovim config directory
+      local config_dir = vim.fn.stdpath('config')
+      
+      -- Execute command from run.txt
+      local function execute_from_runfile()
+        local run_file = config_dir .. '/run.txt'
+        
+        -- Read command from file
+        local cmd = ""
+        local file = io.open(run_file, 'r')
+        if file then
+          cmd = file:read('*a'):gsub('^%s*(.-)%s*$', '%1')
+          file:close()
+        end
+        
+        if cmd == "" then
+          vim.notify("No command found in run.txt", vim.log.levels.ERROR)
+          return
+        end
+        
+        -- Execute in terminal split (horizontal for Termux)
+        vim.cmd('split | terminal ' .. cmd)
+        vim.cmd('startinsert') -- Focus terminal
+      end
+      
+      -- Close terminal buffer
+      local function close_terminal()
+        if vim.bo.buftype == 'terminal' then
+          vim.cmd('bd!') -- Force close
+        end
+      end
+
+      -- Set up keymaps
+      vim.keymap.set({'n', 'i'}, '<C-e>', execute_from_runfile, {
+        noremap = true,
+        silent = true,
+        desc = 'Execute run.txt command'
+      })
+      
+      vim.keymap.set({'n', 't'}, '<C-q>', close_terminal, {
+        noremap = true,
+        silent = true,
+        desc = 'Close terminal'
+      })
+    end,
+    config = function()
+      require("which-key").register({
+        ["<C-e>"] = "Run command from run.txt",
+        ["<C-q>"] = "Close terminal window",
+      })
+    end,
+  },
+}
